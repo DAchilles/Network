@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <unistd.h>
+#include <errno.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #define LOCAL_PORT 1234
@@ -118,20 +119,48 @@ int main(int argc, char *argv[])
                         //用index来取数据块的编号
                         short index;
                         memcpy(&index, buf+2, 2);
-                        index = ntohs(index);
-                        
+                        cout <<"Pack No." <<ntohs(index) <<endl;
+                        //把包里的数据写入本地文件
+                        fwrite(buf+4, res-4, 1, local_file);
+                        //判断是否为最后一个包
+                        if(res<512)
+                        {
+                            cout <<"Download finish!" <<endl;
+                            break;
+                        }
+                        //组装ACK
+                        char ack[4];
+                        ack[0]=0x00;
+                        ack[1]=0x04;
+                        memcpy(ack, &index, 2);
+                        //FIXME:发送ACK
+                        int ack_len=sendto(sock, ack, 4, 0, (sockaddr*)&server_addr, sizeof(server_addr));
+                        if(ack_len != 4)
+                        {
+                            cout <<"ACK send error!" <<errno <<endl;
+                        }  
                     }
                     //操作码等于5，error包
                     else if(flag == 5)
                     {
-
+                        //用error_code取错误码
+                        short error_code;
+                        memcpy(&error_code, buf+2, 2);
+                        error_code = ntohs(error_code);
+                        //用error_str存储错误信息
+                        char error_str[1024];
+                        int iter=0;
+                        while(*(buf+4+iter) != 0)
+                        {
+                            memcpy(error_str+iter, buf+4+iter, 1);
+                            iter++;
+                        }
+                        cout <<"Error " <<error_code <<"!\t" <<error_str <<endl;
+                        break;
                     }
                 }
             }
             fclose(local_file);
-            
-
-
         }
         //写请求（上传）
         else if(op_code==0x02)
