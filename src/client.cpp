@@ -39,7 +39,7 @@ char* request_pack(const char *content, int op_code, int modes, int &datalen)
 
 int main(int argc, char *argv[])
 {
-    //client -[r/w] -[n/o] server_addr filename
+    //tftp-client <-r/-w> <-n/-o> <server_addr> <filename>
     if(argc==5)
     {
         int op_code, modes;
@@ -52,7 +52,9 @@ int main(int argc, char *argv[])
             op_code=0x02;
         else
         {
-            //TODO:输出错误提示
+            //输出错误提示
+            cout <<"Error input!" <<endl;
+            goto USAGE;
         }
         
         //选择netascii or octet
@@ -62,7 +64,9 @@ int main(int argc, char *argv[])
             modes=1;
         else
         {
-            //TODO:输出错误提示
+            //输出错误提示
+            cout <<"Error input!" <<endl;
+            goto USAGE;
         }
         
         //向服务器构建请求包
@@ -132,16 +136,72 @@ int main(int argc, char *argv[])
         //写请求（上传）
         else if(op_code==0x02)
         {
+            char buf[1024];
+            //发送WRQ到服务器的69端口之后，服务器会找一个随机端口发送ACK0到客户端，客户端发送数据包应该发给此端口，因此需要一个server_addr来保存地址信息
+            sockaddr_in server_addr;
+            socklen_t len = sizeof(server_addr);
+            res = recvfrom(sock, buf, 1024, 0, (sockaddr*)&server_addr, &len);
+            if(res<=0)
+            {
+                //TODO:输出错误提示
+            }
+            short flag;
+            memcpy(&flag, buf, 2);
+            flag = ntohs(flag);
+            //收到一个ACK包
+            if(flag==4)
+            {
+                short index;
+                memcpy(&index, buf+2, 2);
+                index = ntohs(index);
+                if(index != 0)
+                {
+                    //TODO:输出错误信息
+                }
+            }
+            else
+            {
+                //TODO:输出错误信息
+            }
+            //打开本地文件
+            FILE *local_file;
+            //文本形式（netascii）
+            if(modes==0)
+                local_file=fopen(argv[4], "r");
+            //二进制文件（octet）
+            else if(modes==1)
+                local_file=fopen(argv[4], "rb");
+            //打开文件失败
+            if(local_file == NULL)
+            {
+                cout <<"Open local file failed!" <<endl;
+                return -1;
+            }
+            //发送本地文件
+            while(true)
+            {
+                //TODO:制作数据包
+                char data_pack[1024];
+                //TODO:发送数据包
+                int res = sendto(sock, data_pack, datalen, 0, (sockaddr*)&server_addr, sizeof(server_addr));
+                //TODO:接受ACK
 
+
+            }
+            fclose(local_file);
         }
-        
-
-
+        goto END;
     }
-    else
+    
+
+    
+USAGE:
     {
         //TODO:输出错误信息
+        cout <<"usage:\t";
+        cout <<"tftp-client <-r read|-w write> <-n netascii| -o octet> <server_addr> <filename>";
+        return -1;
     }
-    
-    
+END:
+    return 0; 
 }
