@@ -24,18 +24,18 @@ sockaddr_in get_addr(char *ip, int port)
 char* request_pack(const char *content, int op_code, int modes, int &datalen)
 {
     string mode[2]={"netascii", "octet"};
-    string buf;
-    
+    int len=strlen(content);
+    char *buf=new char[1024];
+
     buf[0] = 0x00;
     buf[1] = op_code;
-    buf += content;
-    buf += "\0";
-    buf += mode[modes]+"\0";
+    memcpy(buf + 2, content, len);
+    memcpy(buf + 2 + len, "\0", 1);
+    memcpy(buf + 2 + len + 1, mode[modes].c_str(), mode[modes].length());
+    memcpy(buf+2+len+1+mode[modes].length(), "\0", 1);
 
-    datalen = buf.length();
-    char *pack=new char[datalen];
-    memcpy(pack, buf.c_str(), datalen);
-    return pack;
+    datalen = 2 + len + 1 + mode[modes].length() + 1;
+    return buf;
 }
 
 int main(int argc, char *argv[])
@@ -45,7 +45,7 @@ int main(int argc, char *argv[])
     {
         int op_code, modes;
         int sock=socket(AF_INET, SOCK_DGRAM, 0);
-        
+
         //选择读or写
         if(!strcmp(argv[1], "-r"))
             op_code=0x01;
@@ -57,7 +57,7 @@ int main(int argc, char *argv[])
             cout <<"Error input!" <<endl;
             goto USAGE;
         }
-        
+
         //选择netascii or octet
         if(!strcmp(argv[2], "-n"))
             modes=0;
@@ -69,12 +69,12 @@ int main(int argc, char *argv[])
             cout <<"Error input!" <<endl;
             goto USAGE;
         }
-        
+
         //向服务器构建请求包
         sockaddr_in ask_addr = get_addr(argv[3], 69);
         int datalen;
         char *r_pack=request_pack(argv[4], op_code, modes, datalen);
-        
+
         //发送请求包
         int res = sendto(sock, r_pack, datalen, 0, (sockaddr*)&ask_addr, sizeof(ask_addr));
         if(res != datalen)
@@ -82,7 +82,7 @@ int main(int argc, char *argv[])
             cout <<"Send request pack failed!" <<endl;
             return -1;
         }
-        
+
         //读请求（下载）
         if(op_code==0x01)
         {
@@ -132,13 +132,14 @@ int main(int argc, char *argv[])
                         char ack[4];
                         ack[0]=0x00;
                         ack[1]=0x04;
-                        memcpy(ack, &index, 2);
+                        ack[3]=index;
+                        //memcpy(ack, &index, 2);
                         //FIXME:发送ACK
                         int ack_len=sendto(sock, ack, 4, 0, (sockaddr*)&server_addr, sizeof(server_addr));
                         if(ack_len != 4)
                         {
                             cout <<"ACK send error!" <<errno <<endl;
-                        }  
+                        }
                     }
                     //操作码等于5，error包
                     else if(flag == 5)
@@ -207,13 +208,33 @@ int main(int argc, char *argv[])
                 return -1;
             }
             //发送本地文件
-            while(true)
+            for(int i=1; ; i++)
             {
                 //TODO:制作数据包
+                int pack_len;
                 char data_pack[1024];
+                //组装操作码03
+                data_pack[0]=0x00;
+                data_pack[1]=0x03;
+                //组装数据块编号
+                data_pack[2]=i>>8;
+                data_pack[3]=i&0xff;
+                //TODO:复制数据段
+                pack_len=4;
+                for(pack_len=4; pack_len<512; pack_len++)
+                {
+                    if(feof(local_file))
+                        break;
+                    fread(data_pack+pack_len, sizeof(char), 1, local_file);
+                }
                 //TODO:发送数据包
-                int res = sendto(sock, data_pack, datalen, 0, (sockaddr*)&server_addr, sizeof(server_addr));
+                int res = sendto(sock, data_pack, pack_len, 0, (sockaddr*)&server_addr, sizeof(server_addr));
+                if(res != pack_len)
+                {
+                    //TODO:输出错误信息
+                }
                 //TODO:接受ACK
+
 
 
             }
@@ -221,9 +242,9 @@ int main(int argc, char *argv[])
         }
         goto END;
     }
-    
 
-    
+
+
 USAGE:
     {
         //TODO:输出错误信息
@@ -232,5 +253,5 @@ USAGE:
         return -1;
     }
 END:
-    return 0; 
+    return 0;
 }
