@@ -7,7 +7,6 @@
 #include <errno.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
-#define LOCAL_PORT 1234
 using namespace std;
 
 //组装地址信息
@@ -90,7 +89,7 @@ int main(int argc, char *argv[])
             //文本形式（netascii）
             if(modes==0)
                 local_file=fopen(argv[4], "w");
-            //二进制文件（octet）
+                //二进制文件（octet）
             else if(modes==1)
                 local_file=fopen(argv[4], "wb");
             //创建文件失败
@@ -119,29 +118,31 @@ int main(int argc, char *argv[])
                         //用index来取数据块的编号
                         short index;
                         memcpy(&index, buf+2, 2);
-                        cout <<"Pack No." <<ntohs(index) <<endl;
+                        index = ntohs(index);
+                        cout <<"Pack No." <<index <<endl;
                         //把包里的数据写入本地文件
                         fwrite(buf+4, res-4, 1, local_file);
-                        //判断是否为最后一个包
-                        if(res<512)
-                        {
-                            cout <<"Download finish!" <<endl;
-                            break;
-                        }
                         //组装ACK
                         char ack[4];
                         ack[0]=0x00;
                         ack[1]=0x04;
-                        ack[3]=index;
-                        //memcpy(ack, &index, 2);
+                        ack[2]=index>>8;
+                        ack[3]=index&0xff;
+                        //memcpy(ack+2, &index, 2);
                         //FIXME:发送ACK
                         int ack_len=sendto(sock, ack, 4, 0, (sockaddr*)&server_addr, sizeof(server_addr));
                         if(ack_len != 4)
                         {
                             cout <<"ACK send error!" <<errno <<endl;
                         }
+                        //判断是否为最后一个包
+                        if(res<516)
+                        {
+                            cout <<"Download finish!" <<endl;
+                            break;
+                        }
                     }
-                    //操作码等于5，error包
+                        //操作码等于5，error包
                     else if(flag == 5)
                     {
                         //用error_code取错误码
@@ -163,7 +164,7 @@ int main(int argc, char *argv[])
             }
             fclose(local_file);
         }
-        //写请求（上传）
+            //写请求（上传）
         else if(op_code==0x02)
         {
             char buf[1024];
@@ -198,7 +199,7 @@ int main(int argc, char *argv[])
             //文本形式（netascii）
             if(modes==0)
                 local_file=fopen(argv[4], "r");
-            //二进制文件（octet）
+                //二进制文件（octet）
             else if(modes==1)
                 local_file=fopen(argv[4], "rb");
             //打开文件失败
@@ -207,9 +208,12 @@ int main(int argc, char *argv[])
                 cout <<"Open local file failed!" <<endl;
                 return -1;
             }
+            bool send_finish=false;
             //发送本地文件
             for(int i=1; ; i++)
             {
+                if(send_finish)
+                    break;
                 //TODO:制作数据包
                 int pack_len;
                 char data_pack[1024];
@@ -217,14 +221,19 @@ int main(int argc, char *argv[])
                 data_pack[0]=0x00;
                 data_pack[1]=0x03;
                 //组装数据块编号
-                data_pack[2]=i>>8;
-                data_pack[3]=i&0xff;
+                //short index = htons(i);
+                short index = i;
+                data_pack[2]=index>>8;
+                data_pack[3]=index&0xff;
                 //TODO:复制数据段
                 pack_len=4;
                 for(pack_len=4; pack_len<512; pack_len++)
                 {
                     if(feof(local_file))
+                    {
+                        send_finish = true;
                         break;
+                    }
                     fread(data_pack+pack_len, sizeof(char), 1, local_file);
                 }
                 //TODO:发送数据包
@@ -237,6 +246,7 @@ int main(int argc, char *argv[])
 
 
 
+
             }
             fclose(local_file);
         }
@@ -245,13 +255,13 @@ int main(int argc, char *argv[])
 
 
 
-USAGE:
+    USAGE:
     {
         //TODO:输出错误信息
         cout <<"usage:\t";
         cout <<"tftp-client <-r read|-w write> <-n netascii| -o octet> <server_addr> <filename>";
         return -1;
     }
-END:
+    END:
     return 0;
 }

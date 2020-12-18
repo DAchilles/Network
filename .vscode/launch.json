@@ -10,10 +10,10 @@
             "request": "launch",
             "program": "${fileDirname}/${fileBasenameNoExtension}",
             "args": [
-                "-r",
+                "-w",
                 "-n",
                 "127.0.0.1",
-                "test1.txt"
+                "client.txt"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
