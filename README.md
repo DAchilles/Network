@@ -6,10 +6,10 @@ USAGE：
 ./${filename} < -r | -w > < -n | -o > <server_addr> <filename>
 ```
 
-`-r`: RRQ download
+`-r`: --RRQ | download
 
-`-w`: WRQ	upload
+`-w`: --WRQ	| upload
 
-`-n`: transfer in netascii mode
+`-n`: --netascii | transfer in netascii mode
 
-`-o`: transfer in octet mode
+`-o`: --octet | transfer in octet mode
