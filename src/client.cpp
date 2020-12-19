@@ -164,38 +164,23 @@ int main(int argc, char *argv[])
             }
             fclose(local_file);
         }
-            //写请求（上传）
+            /*写请求(上传):
+                打开文件
+                while(ture)
+                {
+                    接收服务器发的ACK
+                    提取ACK编号index
+                    发送data[index+1]
+                    if(data[index+1])
+                        break;
+                }
+            */
         else if(op_code==0x02)
         {
-            char buf[1024];
-            //发送WRQ到服务器的69端口之后，服务器会找一个随机端口发送ACK0到客户端，客户端发送数据包应该发给此端口，因此需要一个server_addr来保存地址信息
-            sockaddr_in server_addr;
-            socklen_t len = sizeof(server_addr);
-            res = recvfrom(sock, buf, 1024, 0, (sockaddr*)&server_addr, &len);
-            if(res<=0)
-            {
-                //TODO:输出错误提示
-            }
-            short flag;
-            memcpy(&flag, buf, 2);
-            flag = ntohs(flag);
-            //收到一个ACK包
-            if(flag==4)
-            {
-                short index;
-                memcpy(&index, buf+2, 2);
-                index = ntohs(index);
-                if(index != 0)
-                {
-                    //TODO:输出错误信息
-                }
-            }
-            else
-            {
-                //TODO:输出错误信息
-            }
             //打开本地文件
             FILE *local_file;
+            int last_index=0;
+            bool send_finish=false;
             //文本形式（netascii）
             if(modes==0)
                 local_file=fopen(argv[4], "r");
@@ -208,45 +193,87 @@ int main(int argc, char *argv[])
                 cout <<"Open local file failed!" <<endl;
                 return -1;
             }
-            bool send_finish=false;
-            //发送本地文件
-            for(int i=1; ; i++)
+            //开始循环收发
+            while(true)
             {
-                if(send_finish)
-                    break;
-                //TODO:制作数据包
-                int pack_len;
-                char data_pack[1024];
-                //组装操作码03
-                data_pack[0]=0x00;
-                data_pack[1]=0x03;
-                //组装数据块编号
-                //short index = htons(i);
-                short index = i;
-                data_pack[2]=index>>8;
-                data_pack[3]=index&0xff;
-                //TODO:复制数据段
-                pack_len=4;
-                for(pack_len=4; pack_len<512; pack_len++)
+                //接受ACK
+                char buf[1024];
+                sockaddr_in server_addr;
+                socklen_t len = sizeof(server_addr);
+                res = recvfrom(sock, buf, 1024, 0, (sockaddr*)&server_addr, &len);
+                //TODO:接包失败
+                if(res<=0)
                 {
-                    if(feof(local_file))
+                    //输出错误提示
+                    break;
+                }
+                //是否为ACK包
+                short op_code;
+                memcpy(&op_code, buf, 2);
+                op_code = ntohs(op_code);
+                //收到一个ACK包
+                if(op_code==4)
+                {
+                    //提取ACK编号
+                    short index;
+                    memcpy(&index, buf+2, 2);
+                    index = ntohs(index);
+                    //如果是最后一个ACK，则发送成功，退出
+                    if(send_finish && index==last_index)
                     {
-                        send_finish = true;
+                        cout <<"Upload finish!" <<endl;
                         break;
                     }
-                    fread(data_pack+pack_len, sizeof(char), 1, local_file);
+                    send_finish = false;
+                    //制作data包
+                    int data_len;
+                    int data_index = index+1;
+                    char data_pack[1024];
+                    //op_code为03
+                    data_pack[0]=0x00;
+                    data_pack[1]=0x03;
+                    //index为ACK的index+1
+                    data_pack[2]=(data_index)>>8;
+                    data_pack[3]=(data_index)&0xff;
+                    //移动文件指针
+                    fseek(local_file, index*512, SEEK_SET);
+                    //复制文件信息到内存中
+                    for(data_len=4; data_len<516; data_len++)
+                    {
+                        if(feof(local_file))
+                        {
+                            send_finish = true;
+                            last_index = data_index;
+                            break;
+                        }
+                        fread(data_pack+data_len, sizeof(char), 1, local_file);
+                    }
+                    //发送数据包
+                    int res = sendto(sock, data_pack, data_len, 0, (sockaddr*)&server_addr, sizeof(server_addr));
+                    //发送失败则输出错误信息
+                    if(res != data_len)
+                    {
+                        //输出错误信息
+                    }
                 }
-                //TODO:发送数据包
-                int res = sendto(sock, data_pack, pack_len, 0, (sockaddr*)&server_addr, sizeof(server_addr));
-                if(res != pack_len)
+                    //TODO:收到的ERROR包
+                else if(op_code == 5)
                 {
-                    //TODO:输出错误信息
+                    //用error_code取错误码
+                    short error_code;
+                    memcpy(&error_code, buf+2, 2);
+                    error_code = ntohs(error_code);
+                    //用error_str存储错误信息
+                    char error_str[1024];
+                    int iter=0;
+                    while(*(buf+4+iter) != 0)
+                    {
+                        memcpy(error_str+iter, buf+4+iter, 1);
+                        iter++;
+                    }
+                    cout <<"Error " <<error_code <<"!\t" <<error_str <<endl;
+                    break;
                 }
-                //TODO:接受ACK
-
-
-
-
             }
             fclose(local_file);
         }
@@ -255,13 +282,13 @@ int main(int argc, char *argv[])
 
 
 
-    USAGE:
+USAGE:
     {
         //TODO:输出错误信息
         cout <<"usage:\t";
         cout <<"tftp-client <-r read|-w write> <-n netascii| -o octet> <server_addr> <filename>";
         return -1;
     }
-    END:
+END:
     return 0;
 }
