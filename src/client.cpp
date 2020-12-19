@@ -1,8 +1,10 @@
 #include <iostream>
+#include <fstream>
 #include <algorithm>
 #include <string>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <unistd.h>
 #include <errno.h>
 #include <arpa/inet.h>
@@ -39,9 +41,16 @@ char* request_pack(const char *content, int op_code, int modes, int &datalen)
 
 int main(int argc, char *argv[])
 {
+    //打开日志
+    time_t now = time(0);
+    char* now_s = ctime(&now);
+    now_s[strlen(now_s)-1] = 0x00;
+    fstream log("tftp.log", ios::app);
+    log <<"[" <<now_s <<"]" <<endl;
     //tftp-client <-r/-w> <-n/-o> <server_addr> <filename>
     if(argc==5)
-    {
+    {   
+        //创建socket
         int op_code, modes;
         int sock=socket(AF_INET, SOCK_DGRAM, 0);
 
@@ -53,7 +62,8 @@ int main(int argc, char *argv[])
         else
         {
             //输出错误提示
-            cout <<"Error input!" <<endl;
+            cout <<"Illegal input!" <<endl;
+            log <<"\tclient>\t" <<"Illegal input" <<endl;
             goto USAGE;
         }
 
@@ -65,7 +75,8 @@ int main(int argc, char *argv[])
         else
         {
             //输出错误提示
-            cout <<"Error input!" <<endl;
+            cout <<"Illegal input!" <<endl;
+            log <<"\tclient>\t" <<"Illegal input" <<endl;
             goto USAGE;
         }
 
@@ -74,13 +85,21 @@ int main(int argc, char *argv[])
         int datalen;
         char *r_pack=request_pack(argv[4], op_code, modes, datalen);
 
+        //日志记录
+        if(op_code == 1)
+            log <<"\tclient>\t" <<"Send read requre packet" <<endl;
+        else
+            log <<"\tclient>\t" <<"Send write requre packet" <<endl;
+        
         //发送请求包
         int res = sendto(sock, r_pack, datalen, 0, (sockaddr*)&ask_addr, sizeof(ask_addr));
         if(res != datalen)
         {
-            cout <<"Send request pack failed!" <<endl;
-            return -1;
+            cout <<"sendto() error" <<endl;
+            log <<"\tclient>\t" <<"Send packet error" <<endl;
+            exit(1);
         }
+        log <<"\tclient>\t" <<"Send packet success" <<endl;
 
         //读请求（下载）
         if(op_code==0x01)
@@ -89,14 +108,15 @@ int main(int argc, char *argv[])
             //文本形式（netascii）
             if(modes==0)
                 local_file=fopen(argv[4], "w");
-                //二进制文件（octet）
+            //二进制文件（octet）
             else if(modes==1)
                 local_file=fopen(argv[4], "wb");
             //创建文件失败
             if(local_file == NULL)
             {
                 cout <<"Create local file failed!" <<endl;
-                return -1;
+                log <<"\tclient>\t" <<"Create local file failed!" <<endl;
+                exit(1);
             }
             //开始传输文件
             while (true)
@@ -111,7 +131,7 @@ int main(int argc, char *argv[])
                     //用flag来取服务器发送的包的操作码
                     short flag;
                     memcpy(&flag, buf, 2);
-                    flag = ntohs(flag);     //网络字节序 转 主机字节序
+                    flag = ntohs(flag);     //网络字节序->主机字节序
                     //操作码等于3，数据包
                     if(flag == 3)
                     {
@@ -119,7 +139,8 @@ int main(int argc, char *argv[])
                         short index;
                         memcpy(&index, buf+2, 2);
                         index = ntohs(index);
-                        cout <<"Pack No." <<index <<endl;
+                        cout <<"Get packet No." <<index <<endl;
+                        log <<"\tclient>\t" <<"Recieve data packet No." <<index <<endl;
                         //把包里的数据写入本地文件
                         fwrite(buf+4, res-4, 1, local_file);
                         //组装ACK
@@ -128,23 +149,27 @@ int main(int argc, char *argv[])
                         ack[1]=0x04;
                         ack[2]=index>>8;
                         ack[3]=index&0xff;
-                        //memcpy(ack+2, &index, 2);
-                        //FIXME:发送ACK
+                        //发送ACK
                         int ack_len=sendto(sock, ack, 4, 0, (sockaddr*)&server_addr, sizeof(server_addr));
                         if(ack_len != 4)
                         {
-                            cout <<"ACK send error!" <<errno <<endl;
+                            cout <<"sendto() error" <<endl;
+                            log <<"\tclient>\t" <<"Send ACK No." <<index <<" error" <<endl;
+                            exit(1);
                         }
+                        log <<"\tclient>\t" <<"Send ACK No." <<index <<" success" <<endl;
                         //判断是否为最后一个包
                         if(res<516)
                         {
                             cout <<"Download finish!" <<endl;
+                            log <<"\tclient>\t" <<"Download finish!" <<endl;
                             break;
                         }
                     }
-                        //操作码等于5，error包
+                    //操作码等于5，error包
                     else if(flag == 5)
                     {
+                        log <<"\tclient>\t" <<"Recieve error packet" <<endl;
                         //用error_code取错误码
                         short error_code;
                         memcpy(&error_code, buf+2, 2);
@@ -158,6 +183,7 @@ int main(int argc, char *argv[])
                             iter++;
                         }
                         cout <<"Error " <<error_code <<"!\t" <<error_str <<endl;
+                        log <<"\tError " <<error_code <<"!\t" <<error_str <<endl;
                         break;
                     }
                 }
@@ -191,7 +217,8 @@ int main(int argc, char *argv[])
             if(local_file == NULL)
             {
                 cout <<"Open local file failed!" <<endl;
-                return -1;
+                log <<"\tclient>\t" <<"Open local file failed!" <<endl;
+                exit(1);
             }
             //开始循环收发
             while(true)
@@ -201,11 +228,12 @@ int main(int argc, char *argv[])
                 sockaddr_in server_addr;
                 socklen_t len = sizeof(server_addr);
                 res = recvfrom(sock, buf, 1024, 0, (sockaddr*)&server_addr, &len);
-                //TODO:接包失败
+                //接包失败
                 if(res<=0)
                 {
-                    //输出错误提示
-                    break;
+                    cout <<"recvfrom() error" <<endl;
+                    log <<"\tclient>\t" <<"Recieve ACK packet error" <<endl;
+                    exit(1);
                 }
                 //是否为ACK包
                 short op_code;
@@ -218,10 +246,12 @@ int main(int argc, char *argv[])
                     short index;
                     memcpy(&index, buf+2, 2);
                     index = ntohs(index);
+                    log <<"\tclient>\t" <<"Recieve ACK No." <<index <<endl;
                     //如果是最后一个ACK，则发送成功，退出
                     if(send_finish && index==last_index)
                     {
                         cout <<"Upload finish!" <<endl;
+                        log <<"\tclient>\t" <<"Upload finish" <<endl;
                         break;
                     }
                     send_finish = false;
@@ -250,15 +280,21 @@ int main(int argc, char *argv[])
                     }
                     //发送数据包
                     int res = sendto(sock, data_pack, data_len, 0, (sockaddr*)&server_addr, sizeof(server_addr));
+                    cout <<"Put data packet No." <<data_index <<endl;
+                    log <<"\tclient>\t" <<"Send data packet No." <<data_index <<" success"<<endl;
                     //发送失败则输出错误信息
                     if(res != data_len)
                     {
                         //输出错误信息
+                        cout <<"sendto() error" <<endl;
+                        log <<"\tclient>\t" <<"Send data packet error" <<endl;
+                        exit(1);
                     }
                 }
-                    //TODO:收到的ERROR包
+                //收到的ERROR包
                 else if(op_code == 5)
                 {
+                    log <<"client\t" <<"Recieve error packet" <<endl;
                     //用error_code取错误码
                     short error_code;
                     memcpy(&error_code, buf+2, 2);
@@ -271,24 +307,27 @@ int main(int argc, char *argv[])
                         memcpy(error_str+iter, buf+4+iter, 1);
                         iter++;
                     }
-                    cout <<"Error " <<error_code <<"!\t" <<error_str <<endl;
+                    cout <<"Error " <<error_code <<"! " <<error_str <<endl;
+                    log <<"\tError "<<error_code <<"! " <<error_str <<endl;
                     break;
                 }
             }
             fclose(local_file);
         }
+
         goto END;
     }
 
 
 
 USAGE:
-    {
-        //TODO:输出错误信息
-        cout <<"usage:\t";
-        cout <<"tftp-client <-r read|-w write> <-n netascii| -o octet> <server_addr> <filename>";
-        return -1;
-    }
+    cout <<"USAGE:\t";
+    cout <<"tftp-client <-r read|-w write> <-n netascii| -o octet> <server_addr> <filename>";
+ERROR: 
+    log <<"\tclient>\t" <<"Break" <<endl;
+    log <<endl;
+    return -1; 
 END:
+    log <<endl;
     return 0;
 }
