@@ -136,7 +136,7 @@ int main(int argc, char *argv[])
                     if(flag == 3)
                     {
                         //用index来取数据块的编号
-                        short index;
+                        unsigned short index;
                         memcpy(&index, buf+2, 2);
                         index = ntohs(index);
                         cout <<"Get packet No." <<index <<endl;
@@ -190,27 +190,28 @@ int main(int argc, char *argv[])
             }
             fclose(local_file);
         }
-            /*写请求(上传):
-                打开文件
-                while(ture)
-                {
-                    接收服务器发的ACK
-                    提取ACK编号index
-                    发送data[index+1]
-                    if(data[index+1])
-                        break;
-                }
-            */
+        /*
+        写请求(上传):
+            打开文件
+            while(ture)
+            {
+                接收服务器发的ACK
+                提取ACK编号index
+                发送data[index+1]
+                if(data[index+1])
+                    break;
+            }
+        */
         else if(op_code==0x02)
         {
+            int last_index=0, overflow=0;;
+            bool send_finish=false;
             //打开本地文件
             FILE *local_file;
-            int last_index=0;
-            bool send_finish=false;
             //文本形式（netascii）
             if(modes==0)
                 local_file=fopen(argv[4], "r");
-                //二进制文件（octet）
+            //二进制文件（octet）
             else if(modes==1)
                 local_file=fopen(argv[4], "rb");
             //打开文件失败
@@ -243,12 +244,14 @@ int main(int argc, char *argv[])
                 if(op_code==4)
                 {
                     //提取ACK编号
-                    short index;
+                    unsigned short index;
+                    int true_index;
                     memcpy(&index, buf+2, 2);
                     index = ntohs(index);
+                    true_index = 65535*overflow + index;
                     log <<"\tclient>\t" <<"Recieve ACK No." <<index <<endl;
                     //如果是最后一个ACK，则发送成功，退出
-                    if(send_finish && index==last_index)
+                    if(send_finish && true_index==last_index)
                     {
                         cout <<"Upload finish!" <<endl;
                         log <<"\tclient>\t" <<"Upload finish" <<endl;
@@ -256,6 +259,8 @@ int main(int argc, char *argv[])
                     }
                     send_finish = false;
                     //制作data包
+                    if(index == 65535)
+                        overflow += 1;
                     int data_len;
                     int data_index = index+1;
                     char data_pack[1024];
@@ -266,22 +271,22 @@ int main(int argc, char *argv[])
                     data_pack[2]=(data_index)>>8;
                     data_pack[3]=(data_index)&0xff;
                     //移动文件指针
-                    fseek(local_file, index*512, SEEK_SET);
+                    fseek(local_file, true_index*512, SEEK_SET);
                     //复制文件信息到内存中
                     for(data_len=4; data_len<516; data_len++)
                     {
                         if(feof(local_file))
                         {
                             send_finish = true;
-                            last_index = data_index;
+                            last_index = data_index + 65535*overflow;
                             break;
                         }
                         fread(data_pack+data_len, sizeof(char), 1, local_file);
                     }
                     //发送数据包
                     int res = sendto(sock, data_pack, data_len, 0, (sockaddr*)&server_addr, sizeof(server_addr));
-                    cout <<"Put data packet No." <<data_index <<endl;
-                    log <<"\tclient>\t" <<"Send data packet No." <<data_index <<" success"<<endl;
+                    cout <<"Put data packet No." <<true_index+1 <<endl;
+                    log <<"\tclient>\t" <<"Send data packet No." <<true_index+1 <<" success"<<endl;
                     //发送失败则输出错误信息
                     if(res != data_len)
                     {

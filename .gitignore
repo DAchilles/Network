@@ -1,2 +1,4 @@
 .vscode
+client
 tftp.log
+test.*
