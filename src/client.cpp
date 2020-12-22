@@ -119,7 +119,7 @@ int main(int argc, char *argv[])
             log <<"[" << now_s <<"]" <<"Send packet error" <<endl;
             exit(1);
         }
-        now = time(0);
+            now = time(0);
             now_s = ctime(&now);
             now_s.erase(now_s.length()-1);
             log <<"[" << now_s <<"]" <<"Send packet success" <<endl;
@@ -139,12 +139,14 @@ int main(int argc, char *argv[])
             {
                 cout <<"Create local file failed!" <<endl;
                 now = time(0);
-            now_s = ctime(&now);
-            now_s.erase(now_s.length()-1);
-            log <<"[" << now_s <<"]" <<"Create local file failed!" <<endl;
+                now_s = ctime(&now);
+                now_s.erase(now_s.length()-1);
+                log <<"[" << now_s <<"]" <<"Create local file failed!" <<endl;
                 exit(1);
             }
             //开始传输文件
+            time_t start_time = time(0);
+            int packet_cnt=0;
             while (true)
             {
                 char buf[1024];
@@ -161,15 +163,16 @@ int main(int argc, char *argv[])
                     //操作码等于3，数据包
                     if(flag == 3)
                     {
+                        packet_cnt++;
                         //用index来取数据块的编号
                         unsigned short index;
                         memcpy(&index, buf+2, 2);
                         index = ntohs(index);
                         cout <<"Get packet No." <<index <<endl;
                         now = time(0);
-            now_s = ctime(&now);
-            now_s.erase(now_s.length()-1);
-            log <<"[" << now_s <<"]" <<"Recieve data packet No." <<index <<endl;
+                        now_s = ctime(&now);
+                        now_s.erase(now_s.length()-1);
+                        log <<"[" << now_s <<"]" <<"Recieve data packet No." <<index <<endl;
                         //把包里的数据写入本地文件
                         fwrite(buf+4, res-4, 1, local_file);
                         //组装ACK
@@ -184,23 +187,23 @@ int main(int argc, char *argv[])
                         {
                             cout <<"sendto() error" <<endl;
                             now = time(0);
-            now_s = ctime(&now);
-            now_s.erase(now_s.length()-1);
-            log <<"[" << now_s <<"]" <<"Send ACK No." <<index <<" error" <<endl;
+                            now_s = ctime(&now);
+                            now_s.erase(now_s.length()-1);
+                            log <<"[" << now_s <<"]" <<"Send ACK No." <<index <<" error" <<endl;
                             exit(1);
                         }
                         now = time(0);
-            now_s = ctime(&now);
-            now_s.erase(now_s.length()-1);
-            log <<"[" << now_s <<"]" <<"Send ACK No." <<index <<" success" <<endl;
+                        now_s = ctime(&now);
+                        now_s.erase(now_s.length()-1);
+                        log <<"[" << now_s <<"]" <<"Send ACK No." <<index <<" success" <<endl;
                         //判断是否为最后一个包
                         if(res<516)
                         {
-                            cout <<"Download finish!" <<endl;
+                            cout <<"Download finish!";
                             now = time(0);
-            now_s = ctime(&now);
-            now_s.erase(now_s.length()-1);
-            log <<"[" << now_s <<"]" <<"Download finish!" <<endl;
+                            now_s = ctime(&now);
+                            now_s.erase(now_s.length()-1);
+                            log <<"[" << now_s <<"]" <<"Download finish!" <<endl;
                             break;
                         }
                     }
@@ -208,9 +211,9 @@ int main(int argc, char *argv[])
                     else if(flag == 5)
                     {
                         now = time(0);
-            now_s = ctime(&now);
-            now_s.erase(now_s.length()-1);
-            log <<"[" << now_s <<"]" <<"Recieve error packet" <<endl;
+                        now_s = ctime(&now);
+                        now_s.erase(now_s.length()-1);
+                        log <<"[" << now_s <<"]" <<"Recieve error packet" <<endl;
                         //用error_code取错误码
                         short error_code;
                         memcpy(&error_code, buf+2, 2);
@@ -229,6 +232,8 @@ int main(int argc, char *argv[])
                     }
                 }
             }
+            time_t end_time = time(0);
+            cout <<"\tSpeed: " <<(double)packet_cnt*512/1024/(end_time-start_time) <<"KB/s\n";
             fclose(local_file);
         }
         /*
@@ -260,12 +265,13 @@ int main(int argc, char *argv[])
             {
                 cout <<"Open local file failed!" <<endl;
                 now = time(0);
-            now_s = ctime(&now);
-            now_s.erase(now_s.length()-1);
-            log <<"[" << now_s <<"]" <<"Open local file failed!" <<endl;
+                now_s = ctime(&now);
+                now_s.erase(now_s.length()-1);
+                log <<"[" << now_s <<"]" <<"Open local file failed!" <<endl;
                 exit(1);
             }
             //开始循环收发
+            time_t start_time = time(0);
             while(true)
             {
                 //接受ACK
@@ -278,9 +284,9 @@ int main(int argc, char *argv[])
                 {
                     cout <<"recvfrom() error" <<endl;
                     now = time(0);
-            now_s = ctime(&now);
-            now_s.erase(now_s.length()-1);
-            log <<"[" << now_s <<"]" <<"Recieve ACK packet error" <<endl;
+                    now_s = ctime(&now);
+                    now_s.erase(now_s.length()-1);
+                    log <<"[" << now_s <<"]" <<"Recieve ACK packet error" <<endl;
                     exit(1);
                 }
                 //是否为ACK包
@@ -297,17 +303,17 @@ int main(int argc, char *argv[])
                     index = ntohs(index);
                     true_index = 65535*overflow + index;
                     now = time(0);
-            now_s = ctime(&now);
-            now_s.erase(now_s.length()-1);
-            log <<"[" << now_s <<"]" <<"Recieve ACK No." <<index <<endl;
+                    now_s = ctime(&now);
+                    now_s.erase(now_s.length()-1);
+                    log <<"[" << now_s <<"]" <<"Recieve ACK No." <<index <<endl;
                     //如果是最后一个ACK，则发送成功，退出
                     if(send_finish && true_index==last_index)
                     {
-                        cout <<"Upload finish!" <<endl;
+                        cout <<"Upload finish!";
                         now = time(0);
-            now_s = ctime(&now);
-            now_s.erase(now_s.length()-1);
-            log <<"[" << now_s <<"]" <<"Upload finish" <<endl;
+                        now_s = ctime(&now);
+                        now_s.erase(now_s.length()-1);
+                        log <<"[" << now_s <<"]" <<"Upload finish!" <<endl;
                         break;
                     }
                     send_finish = false;
@@ -340,18 +346,18 @@ int main(int argc, char *argv[])
                     int res = sendto(sock, data_pack, data_len, 0, (sockaddr*)&server_addr, sizeof(server_addr));
                     cout <<"Put data packet No." <<true_index+1 <<endl;
                     now = time(0);
-            now_s = ctime(&now);
-            now_s.erase(now_s.length()-1);
-            log <<"[" << now_s <<"]" <<"Send data packet No." <<true_index+1 <<" success"<<endl;
+                    now_s = ctime(&now);
+                    now_s.erase(now_s.length()-1);
+                    log <<"[" << now_s <<"]" <<"Send data packet No." <<true_index+1 <<" success"<<endl;
                     //发送失败则输出错误信息
                     if(res != data_len)
                     {
                         //输出错误信息
                         cout <<"sendto() error" <<endl;
                         now = time(0);
-            now_s = ctime(&now);
-            now_s.erase(now_s.length()-1);
-            log <<"[" << now_s <<"]" <<"Send data packet error" <<endl;
+                        now_s = ctime(&now);
+                        now_s.erase(now_s.length()-1);
+                        log <<"[" << now_s <<"]" <<"Send data packet error" <<endl;
                         exit(1);
                     }
                 }
@@ -376,6 +382,8 @@ int main(int argc, char *argv[])
                     break;
                 }
             }
+            time_t end_time = time(0);
+            cout <<"\tSpeed: " <<(double)last_index*512/1024/(end_time-start_time) <<"KB/s\n";
             fclose(local_file);
         }
 
@@ -386,12 +394,12 @@ int main(int argc, char *argv[])
 
 USAGE:
     cout <<"USAGE:\t";
-    cout <<"tftp-client <-r read|-w write> <-n netascii| -o octet> <server_addr> <filename>";
+    cout <<"client <-r read|-w write> <-n netascii| -o octet> <server_addr> <filename>";
 ERROR: 
     now = time(0);
-            now_s = ctime(&now);
-            now_s.erase(now_s.length()-1);
-            log <<"[" << now_s <<"]" <<"Break" <<endl;
+    now_s = ctime(&now);
+    now_s.erase(now_s.length()-1);
+    log <<"[" << now_s <<"]" <<"Break" <<endl;
     log <<endl;
     return -1; 
 END:
