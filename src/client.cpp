@@ -203,7 +203,7 @@ int main(int argc, char *argv[])
                             now = time(0);
                             now_s = ctime(&now);
                             now_s.erase(now_s.length()-1);
-                            log <<"[" << now_s <<"]" <<"Download finish!" <<endl;
+                            log <<"[" << now_s <<"]" <<"Download finish!";
                             break;
                         }
                     }
@@ -234,6 +234,7 @@ int main(int argc, char *argv[])
             }
             time_t end_time = time(0);
             cout <<"\tSpeed: " <<(double)packet_cnt*512/1024/(end_time-start_time) <<"KB/s\n";
+            log <<"\tSpeed: " <<(double)packet_cnt*512/1024/(end_time-start_time) <<"KB/s\n";
             fclose(local_file);
         }
         /*
@@ -313,7 +314,7 @@ int main(int argc, char *argv[])
                         now = time(0);
                         now_s = ctime(&now);
                         now_s.erase(now_s.length()-1);
-                        log <<"[" << now_s <<"]" <<"Upload finish!" <<endl;
+                        log <<"[" << now_s <<"]" <<"Upload finish!";
                         break;
                     }
                     send_finish = false;
@@ -384,13 +385,12 @@ int main(int argc, char *argv[])
             }
             time_t end_time = time(0);
             cout <<"\tSpeed: " <<(double)last_index*512/1024/(end_time-start_time) <<"KB/s\n";
+            log <<"\tSpeed: " <<(double)last_index*512/1024/(end_time-start_time) <<"KB/s\n";
             fclose(local_file);
         }
 
         goto END;
     }
-
-
 
 USAGE:
     cout <<"USAGE:\t";
