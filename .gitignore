@@ -1,4 +1,5 @@
 .vscode
 client
+timeout_test
 *.log
 test*

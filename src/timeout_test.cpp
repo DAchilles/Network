@@ -16,7 +16,7 @@ TODO:超时重传
 #include <sys/socket.h>
 using namespace std;
 
-timeval nNetTimeout = {5,0};
+timeval nNetTimeout = {3,0};
 
 //组装地址信息
 sockaddr_in get_addr(char *ip, int port)
@@ -114,15 +114,6 @@ int main(int argc, char *argv[])
             add_log(log, "Send WRQ");
         }
 
-        //发送请求包
-        int res = sendto(sock, r_pack, datalen, 0, (sockaddr*)&ask_addr, sizeof(ask_addr));
-        if(res != datalen)
-        {
-            cout <<"sendto() error" <<endl;
-            add_log(log, "Send requre error");
-            goto ERROR;
-        }
-
         //读请求（下载）
         if(op_code==0x01)
         {
@@ -141,96 +132,146 @@ int main(int argc, char *argv[])
                 add_log(log, "Create local file failed!");
                 goto ERROR;
             }
+
             //开始传输文件
             time_t start_time = time(0);
+
+            //发送请求包
+            int res;
+            char buf[1024];
+            sockaddr_in server_addr;
+            socklen_t len = sizeof(server_addr);
+            do
+            {
+                res = sendto(sock, r_pack, datalen, 0, (sockaddr*)&ask_addr, sizeof(ask_addr));
+                if(res != datalen)
+                {
+                    cout <<"Send requre error" <<endl;
+                    add_log(log, "Send requre error");
+                    goto ERROR;
+                    break;
+                }
+                //接收ACK0
+                memset(buf, 0, sizeof(buf));
+                res = recvfrom(sock, buf, 1024, 0, (sockaddr*)&server_addr, &len);
+            }while(res<0 && (errno == EWOULDBLOCK || errno == EAGAIN));
+
+            //接包失败
+            if(res<0)
+            {
+                cout <<"recvfrom() error" <<endl;
+                add_log(log, "Recieve data packet error");
+                goto ERROR;
+            }
+
             unsigned short packet_want=0;
             while (true)
             {
-                char buf[1024];
-                //发送RRQ到服务器的69端口之后，服务器会找一个随机端口发送数据到客户端，客户端返回ACK时应该发给此端口，因此需要一个server_addr来保存地址信息
-                sockaddr_in server_addr;
-                socklen_t len = sizeof(server_addr);
-                res = recvfrom(sock, buf, 1024, 0, (sockaddr*)&server_addr, &len);
-                //接包失败
-                if(res<=0)
+                //用flag来取服务器发送的包的操作码
+                short op_code;
+                memcpy(&op_code, buf, 2);
+                op_code = ntohs(op_code);     //网络字节序->主机字节序
+                //操作码等于3，数据包
+                if(op_code == 3)
                 {
-                    cout <<"recvfrom() error" <<endl;
-                    add_log(log, "Recieve ACK packet error");
-                    goto ERROR;
-                }
-
-                if(res > 0)
-                {
-                    //用flag来取服务器发送的包的操作码
-                    short flag;
-                    memcpy(&flag, buf, 2);
-                    flag = ntohs(flag);     //网络字节序->主机字节序
-                    //操作码等于3，数据包
-                    if(flag == 3)
+                    //用index来取数据块的编号
+                    unsigned short index;
+                    memcpy(&index, buf+2, 2);
+                    
+                    index = ntohs(index);
+                    cout <<"Recieve data packet No." <<index <<endl;
+                    add_log(log, "Recieve data packet No." + to_string(index));
+                    //如果是想要的包，则写进buf
+                    if(index == packet_want+1)
                     {
-                        //用index来取数据块的编号
-                        unsigned short index;
-                        memcpy(&index, buf+2, 2);
-                        index = ntohs(index);
-                        cout <<"Recieve data packet No." <<index <<endl;
-                        add_log(log, "Recieve data packet No." + to_string(index));
-                        //如果是想要的包，则写进buf
-                        if(index == packet_want+1)
-                        {
-                            packet_want++;
-                            //把包里的数据写入本地文件
-                            fwrite(buf+4, res-4, 1, local_file);
-                        }
+                        packet_want++;
+                        //把包里的数据写入本地文件
+                        fwrite(buf+4, res-4, 1, local_file);
+                    }
+                    //判断是否为最后一个包
+                    if(res<516)
+                    {
+                        cout <<"Download finish!" <<endl;
+                        add_log(log, "Download finish");
                         //组装ACK
                         char ack[4];
                         ack[0]=0x00;
                         ack[1]=0x04;
                         ack[2]=packet_want>>8;
                         ack[3]=packet_want&0xff;
+                        /*
+                        do{
+                            res = sendto(sock, ack, 4, 0, (sockaddr*)&server_addr, sizeof(server_addr));
+                            add_log(log, "Send ACK No." + to_string(packet_want));
+                            if(res != 4)
+                            {
+                                cout <<"sendto() error" <<endl;
+                                add_log(log, "Send ACK No." + to_string(packet_want) +" error");
+                                goto ERROR;
+                            }
+                            memset(buf, 0, sizeof(buf));
+                            res = recvfrom(sock, buf, 1024, 0, (sockaddr*)&server_addr, &len);
+                        }while (res<0 && (errno != EWOULDBLOCK && errno != EAGAIN));
+                        */
                         //发送ACK
-                        int ack_len=sendto(sock, ack, 4, 0, (sockaddr*)&server_addr, sizeof(server_addr));
+                        res = sendto(sock, ack, 4, 0, (sockaddr*)&server_addr, sizeof(server_addr));
                         add_log(log, "Send ACK No." + to_string(packet_want));
-                        if(ack_len != 4)
+                        if(res != 4)
                         {
                             cout <<"sendto() error" <<endl;
                             add_log(log, "Send ACK No." + to_string(packet_want) +" error");
                             goto ERROR;
                         }
-                        //判断是否为最后一个包
-                        if(res<516)
-                        {
-                            cout <<"Download finish!" <<endl;
-                            add_log(log, "Download finish");
-                            break;
-                        }
-                    }
-                        //操作码等于5，error包
-                    else if(flag == 5)
-                    {
-                        //用error_code取错误码
-                        short error_code;
-                        memcpy(&error_code, buf+2, 2);
-                        error_code = ntohs(error_code);
-                        //用error_str存储错误信息
-                        string error_str;
-                        int iter=0;
-                        while(*(buf+4+iter) != '\0')
-                        {
-                            error_str += *(buf+4+iter);
-                            iter++;
-                        }
-                        cout <<"Error " <<error_code <<"! " <<error_str <<endl;
-                        add_log(log, "Error " + to_string(error_code) + "! " + error_str);
-                        goto ERROR;
                         break;
                     }
+                    //组装ACK
+                    char ack[4];
+                    ack[0]=0x00;
+                    ack[1]=0x04;
+                    ack[2]=packet_want>>8;
+                    ack[3]=packet_want&0xff;
+                    do{
+                        //发送ACK
+                        res = sendto(sock, ack, 4, 0, (sockaddr*)&server_addr, sizeof(server_addr));
+                        add_log(log, "Send ACK No." + to_string(packet_want));
+                        if(res != 4)
+                        {
+                            cout <<"sendto() error" <<endl;
+                            add_log(log, "Send ACK No." + to_string(packet_want) +" error");
+                            goto ERROR;
+                        }
+                        memset(buf, 0, sizeof(buf));
+                        res = recvfrom(sock, buf, 1024, 0, (sockaddr*)&server_addr, &len);
+                    }while (res<0 && (errno == EWOULDBLOCK || errno == EAGAIN));
+                
+                }
+                    //操作码等于5，error包
+                else if(op_code == 5)
+                {
+                    //用error_code取错误码
+                    short error_code;
+                    memcpy(&error_code, buf+2, 2);
+                    error_code = ntohs(error_code);
+                    //用error_str存储错误信息
+                    string error_str;
+                    int iter=0;
+                    while(*(buf+4+iter) != '\0')
+                    {
+                        error_str += *(buf+4+iter);
+                        iter++;
+                    }
+                    cout <<"Error " <<error_code <<"! " <<error_str <<endl;
+                    add_log(log, "Error " + to_string(error_code) + "! " + error_str);
+                    goto ERROR;
+                    break;
                 }
             }
             time_t end_time = time(0);
             cout <<"Speed: " <<(double)packet_want*512/1024/(end_time-start_time) <<"KB/s\n";
             fclose(local_file);
         }
-            /*写请求(上传)*/
+
+        /*写请求(上传)*/
         else if(op_code==0x02)
         {
             //打开本地文件
@@ -267,7 +308,7 @@ int main(int argc, char *argv[])
                 //接收ACK0
                 memset(buf, 0, sizeof(buf));
                 res = recvfrom(sock, buf, 1024, 0, (sockaddr*)&server_addr, &len);
-            }while(res<0 && (errno== EWOULDBLOCK || errno == EAGAIN));
+            }while(res<0 && (errno == EWOULDBLOCK || errno == EAGAIN));
 
             //接包失败
             if(res<0)
@@ -278,6 +319,7 @@ int main(int argc, char *argv[])
             }
 
             //开始循环收发
+            int pack_cnt=0;
             int last_index=0;       //最后一个包的index
             int overflow=0;         //编号是否超出2字节
             bool send_finish=false;
@@ -346,6 +388,7 @@ int main(int argc, char *argv[])
                             add_log(log, "Send data packet error");
                             goto ERROR;
                         }
+                        pack_cnt++;
                         memset(buf, 0, sizeof(buf));
                         res = recvfrom(sock, buf, 1024, 0, (sockaddr*)&server_addr, &len);
                     } while (res<0 && (errno == EWOULDBLOCK || errno == EAGAIN));
@@ -372,7 +415,7 @@ int main(int argc, char *argv[])
                 }
             }
             time_t end_time = time(0);
-            cout <<"Speed: " <<(double)last_index*512/1024/(end_time-start_time) <<"KB/s\n";
+            cout <<"Speed: " <<(double)pack_cnt*512/1024/(end_time-start_time) <<"KB/s\n";
             fclose(local_file);
         }
 
@@ -380,8 +423,8 @@ int main(int argc, char *argv[])
     }
 
     USAGE:
-    cout <<"USAGE:\t";
-    cout <<"client <-r read|-w write> <-n netascii| -o octet> <server_addr> <filename>";
+    cout <<"USAGE:\n";
+    cout <<"\tclient <-r read|-w write> <-n netascii| -o octet> <server_addr> <filename>";
     ERROR:
     add_log(log, "Break");
     return -1;

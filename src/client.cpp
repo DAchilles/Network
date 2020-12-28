@@ -16,7 +16,7 @@ TODO:超时重传
 #include <sys/socket.h>
 using namespace std;
 
-int nNetTimeout = 1000;
+//int nNetTimeout = 1000;
 
 //组装地址信息
 sockaddr_in get_addr(char *ip, int port)
@@ -69,7 +69,7 @@ int main(int argc, char *argv[])
         //创建socket
         int op_code, modes;
         int sock=socket(AF_INET, SOCK_DGRAM, 0);
-        setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (char *)&nNetTimeout, sizeof(int));
+        //setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (char *)&nNetTimeout, sizeof(int));
 
         //选择读or写
         if(!strcmp(argv[1], "-r"))
