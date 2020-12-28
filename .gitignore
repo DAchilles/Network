@@ -1,4 +1,4 @@
 .vscode
 client
 *.log
-test.*
+test*
