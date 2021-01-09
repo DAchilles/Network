@@ -1,5 +1,7 @@
 .vscode
 client
+client_new
 timeout_test
+LICENSE
 *.log
 test*
